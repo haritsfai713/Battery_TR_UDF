@@ -318,12 +318,12 @@ DEFINE_EXECUTE_AT_END(average_temp)
     // mixture gamma and density
     mass = 0.0; // current mass inside the battery (gram)
     gama_sum = 0.0;
-    n_inside_total = 0.0;
+    //n_inside_total = 0.0;
     for (k = 0; k < 6; k++)
     {
         mass     += n_inside[k] * MW[k];
         gama_sum += gama_sp[k] * n_inside[k] * MW[k];
-        n_inside_total += n_inside[k]
+        /* n_inside_total += n_inside[k] */
     }
     if (mass > 0.0) gama = gama_sum / mass;
     else          gama = 1.4;
@@ -331,8 +331,8 @@ DEFINE_EXECUTE_AT_END(average_temp)
 
     // temperature and velocity at the valve
     T2 = T / (1.0 + ((gama - 1.0) / 2.0) * Ma * Ma);
-    if (mass>0 && n_inside_total>0)
-    u2 = Ma * sqrt(gama * ((R_gas*1000)/(mass/n_inside_total)) * T2);
+    if (mass>0 && n_total_inside>0)
+    u2 = Ma * sqrt(gama * ((R_gas*1000)/(mass/n_total_inside)) * T2);
     else u2 = 0;
 
     if (Ma < 1)
@@ -357,7 +357,7 @@ DEFINE_EXECUTE_AT_END(average_temp)
         for (k = 0; k < 6; k++)
         {
             n_exit_rate[k] = (n_gen[k] / n_total_gen) * n_exit_t;
-            n_exit_accu[k] += n_exit_rate[k] // for mixture gamma and density calculation
+            n_exit_accu[k] += n_exit_rate[k]; // for mixture gamma and density calculation
         }
     }
     else
@@ -386,7 +386,7 @@ DEFINE_EXECUTE_AT_END(average_temp)
     else
         dC_chem_dt = 0.0;
     C_chem = C_chem - dC_chem_dt * dt;
-    if (C_chem < 0) C_chem = 0
+    if (C_chem < 0) C_chem = 0;
     q_chem = (1.0 / V_bat) * H_chem * dC_chem_dt;
 
     // electrical (short-circuit heat)
@@ -424,7 +424,7 @@ DEFINE_EXECUTE_AT_END(average_temp)
 
     if (m_tot_gen_accum >= m_total)
     {
-        Message("9 gram limit reached")
+        Message("9 gram limit reached");
     }
 
     Message("t = %g s  T_avg = %g K  P_avg = %g Pa  q = %g W/m3\n",
