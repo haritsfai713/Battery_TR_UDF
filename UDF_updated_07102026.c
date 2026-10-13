@@ -236,12 +236,24 @@ DEFINE_EXECUTE_AT_END(average_temp)
 
 
     /* generation rate of each gas species */
-    G_x[0] = 0.5 * R[0] - R[2];                                           // H2
-    G_x[1] = R[1] + R[8];                                                 // C2H4
-    G_x[2] = 2 * R[2];                                                    // CH4
-    G_x[3] = R[3];                                                        // CO
-    G_x[4] = 3 * R[4] + 4 * R[5] + 3 * R[6] + R[7] + R[8] - 2 * R[3];     // CO2
-    G_x[5] = R[9] + R[10] + 0.5 * R[8] - 2.5 * R[4] - 4 * R[5] - 3 * R[6]; // O2
+    if (m_tot_gen_accum < m_total)
+    {
+        G_x[0] = 0.5 * R[0] - R[2];                                           // H2
+        G_x[1] = R[1] + R[8];                                                 // C2H4
+        G_x[2] = 2 * R[2];                                                    // CH4
+        G_x[3] = R[3];                                                        // CO
+        G_x[4] = 3 * R[4] + 4 * R[5] + 3 * R[6] + R[7] + R[8] - 2 * R[3];     // CO2
+        G_x[5] = R[9] + R[10] + 0.5 * R[8] - 2.5 * R[4] - 4 * R[5] - 3 * R[6]; // O2
+    }
+    else {
+        G_x[0] = 0.0;                 // H2
+        G_x[1] = 0.0;              // C2H4
+        G_x[2] = 0.0;          // CH4
+        G_x[3] = 0.0;       // CO
+        G_x[4] = 0.0;     // CO2
+        G_x[5] = 0.0;   // O2
+    }
+
 
     G_total = 0.0;
     for (k = 0; k < 6; k++)
@@ -304,20 +316,25 @@ DEFINE_EXECUTE_AT_END(average_temp)
 
 
     // mixture gamma and density
-    mass = 0.0;
+    mass = 0.0; // current mass inside the battery (gram)
     gama_sum = 0.0;
+    n_inside_total = 0.0;
     for (k = 0; k < 6; k++)
     {
         mass     += n_inside[k] * MW[k];
         gama_sum += gama_sp[k] * n_inside[k] * MW[k];
+        n_inside_total += n_inside[k]
     }
-    if (mass > 0) gama = gama_sum / mass;
-    else          gama = 0.0;
-    rho_mix = mass / V_void;
+    if (mass > 0.0) gama = gama_sum / mass;
+    else          gama = 1.4;
+    rho_mix = (mass/1000) / V_void;
 
     // temperature and velocity at the valve
     T2 = T / (1.0 + ((gama - 1.0) / 2.0) * Ma * Ma);
-    u2 = Ma * sqrt(gama * R_gas * T2);
+    if (mass>0 && n_inside_total>0)
+    u2 = Ma * sqrt(gama * ((R_gas*1000)/(mass/n_inside_total)) * T2);
+    else u2 = 0;
+
     if (Ma < 1)
     {
         P2 = P_atm;
@@ -327,18 +344,20 @@ DEFINE_EXECUTE_AT_END(average_temp)
     {
         P2 = P_avg / pow((1.0 + (gama - 1.0) / 2.0), (gama / (gama - 1)));
         P3 = P_atm;
-        u3 = 0.7 * (u2 - ((P3 - P2) / rho_mix * u2));
+        u3 = 0.7 * (u2 - ((P3 - P2) / (rho_mix * u2)));
     }
 
        // venting (opens above 1.5 MPa)
-    if (valve_open == 1 && T2 > 0 && u2 > 0)
+       // n_exit_accu[k] = (n_gen[k] / n_total_gen) * n_exit_total_accu;
+    if (valve_open == 1 && T2 > 0 && u2 > 0 && n_total_gen > 0)
     {
         n_exit_t = (u3 * Area_valve * P2) / (R_gas * T2);
         n_exit_total_accu += n_exit_t * dt;
+        
         for (k = 0; k < 6; k++)
         {
-            n_exit_accu[k] = (n_gen[k] / n_total_gen) * n_exit_total_accu;
             n_exit_rate[k] = (n_gen[k] / n_total_gen) * n_exit_t;
+            n_exit_accu[k] += n_exit_rate[k] // for mixture gamma and density calculation
         }
     }
     else
@@ -354,7 +373,7 @@ DEFINE_EXECUTE_AT_END(average_temp)
     {
         for (k = 0; k < 6; k++)
         {   m_x[k] = (n_exit_rate[k] * MW[k]) / (1000 * Area_valve);
-            m_x_total += n_exit_rate[k] * MW[k];
+            m_x_total += n_exit_rate[k] * MW[k]; // gram
         }
     }
 
@@ -367,6 +386,7 @@ DEFINE_EXECUTE_AT_END(average_temp)
     else
         dC_chem_dt = 0.0;
     C_chem = C_chem - dC_chem_dt * dt;
+    if (C_chem < 0) C_chem = 0
     q_chem = (1.0 / V_bat) * H_chem * dC_chem_dt;
 
     // electrical (short-circuit heat)
@@ -401,6 +421,11 @@ DEFINE_EXECUTE_AT_END(average_temp)
         C_UDMI(c, t, 28) = m_tot_gen_accum;
     }
     end_c_loop(c, t)
+
+    if (m_tot_gen_accum >= m_total)
+    {
+        Message("9 gram limit reached")
+    }
 
     Message("t = %g s  T_avg = %g K  P_avg = %g Pa  q = %g W/m3\n",
             CURRENT_TIME, T_avg, P_avg, q_stored);
