@@ -195,41 +195,49 @@ DEFINE_EXECUTE_AT_END(average_temp)
     {
          // H2 and CH4 Gas Generation Rate = reaction one and three
         R[0] = 1.917e25 * c_x[0] * exp(-2.86e5 / (R_gas * T)) * exp(-c_x[0] / c_x_1_stoich);
+        if (R[0] * dt > c_x[0]) R[0] = c_x[0] / (dt);
         c_x[0] = c_x[0] - R[0] * dt;
         if (c_x[0] < .00001) c_x[0] = 0.0;
 
         R[2] = 4e28 * c_x[2] * exp(-4.7e5 / (R_gas * T)) * exp(-c_x[2] / c_x_3_stoich);
+        if (R[2] * dt > c_x[2]) R[2] = c_x[2] / (dt);
         c_x[2] = c_x[2] - R[2] * dt;
         if (c_x[2] < .00001) c_x[2] = 0.0;
 
         // C2H4 Gas Generation Rate = reation two and nine
         R[1] = 1.95e20 * c_x[1] * exp(-2e5 / (R_gas * T)) * exp(-c_x[1] / c_x_2_stoich);
+        if (R[1] * dt > c_x[1]) R[1] = c_x[1] / (dt);
         c_x[1] = c_x[1] - R[1] * dt;
         if (c_x[1] < .00001) c_x[1] = 0.0;
 
         // CO Gas Generation Rate
         R[3] = 4e28 * c_x[3] * exp(-4.7e5 / (R_gas * T)) * exp(-c_x[3] / c_x_4_stoich);
-        c_x[3] = c_x[3] - 2 * R[3] * dt;
+        if (R[3] * dt > c_x[3]) R[3] = c_x[3] / (dt);
+        c_x[3] = c_x[3] - R[3] * dt;
         if (c_x[3] < .00001) c_x[3] = 0.0;
 
         // CO2 Gas Generation Rate
         for (k = 4; k <= 7; k++)    // reactions 5 to 8 (same constants)
         {
             R[k] = 5.14e25 * c_x[k] * exp(-2.74e5 / (R_gas * T));
+            if (R[k] * dt > c_x[k]) R[k] = c_x[k] / (dt);
             c_x[k] = c_x[k] - R[k] * dt;
             if (c_x[k] < .00001) c_x[k] = 0.0;
         }
 
         // O2 Gas Generation Rate
         R[9] = 1.75e9 * c_x[9] * exp(-1.1495e5 / (R_gas * T));
+        if (R[9] * dt > c_x[9]) R[9] = c_x[9] / (dt);
         c_x[9] = c_x[9] - R[9] * dt;
         if (c_x[9] < .00001) c_x[9] = 0.0;
 
         R[10] = 1.077e12 * c_x[10] * exp(-1.5888e5 / (R_gas * T));
+        if (R[10] * dt > c_x[10]) R[10] = c_x[10] / (dt);
         c_x[10] = c_x[10] - R[10] * dt;
         if (c_x[10] < .00001) c_x[10] = 0.0;
         
         R[8] = 7.88e36 * c_x[8] * exp(-2.81e5 / (R_gas * T));
+        if (R[8] * dt > c_x[8]) R[8] = c_x[8] / dt;      // NEW: limit to what is left
         c_x[8] = c_x[8] - R[8] * dt;
         if (c_x[8] < .00001) c_x[8] = 0.0;
     }
@@ -285,12 +293,6 @@ DEFINE_EXECUTE_AT_END(average_temp)
         else
             V_void = V_void_init;
     }
-
-    if (n_total_inside > 0 && V_void > 0)
-    {P_avg = (n_total_inside * R_gas * T) / V_void + P_atm;}
-    else {
-        P_avg = P_atm;
-    }
     
 
     // moles inside the battery = generated - vented
@@ -300,6 +302,12 @@ DEFINE_EXECUTE_AT_END(average_temp)
     {
         n_inside[k] = n_gen_accu[k] - n_exit_accu[k];
         if (n_inside[k] < 1e-10) n_inside[k] = 0.0;
+    }
+
+    if (n_total_inside > 0 && V_void > 0)
+    {P_avg = (n_total_inside * R_gas * T) / V_void + P_atm;}
+    else {
+        P_avg = P_atm;
     }
 
     if (P_avg >= 1.5e6)
@@ -352,19 +360,19 @@ DEFINE_EXECUTE_AT_END(average_temp)
     if (valve_open == 1 && T2 > 0 && u2 > 0 && n_total_gen > 0)
     {
         n_exit_t = (u3 * Area_valve * P2) / (R_gas * T2);
+        if (n_exit_t * dt > n_total_inside) n_exit_t = n_total_inside / dt;  // can't vent more than inside
         n_exit_total_accu += n_exit_t * dt;
         
         for (k = 0; k < 6; k++)
         {
             n_exit_rate[k] = (n_gen[k] / n_total_gen) * n_exit_t;
-            n_exit_accu[k] += n_exit_rate[k]; // for mixture gamma and density calculation
+            n_exit_accu[k] += n_exit_rate[k] * dt; // for mixture gamma and density calculation
         }
     }
     else
     {
         n_exit_t = 0.0;
-        n_exit_total_accu = 0.0;
-        for (k = 0; k < 6; k++) n_exit_accu[k] = 0.0;
+        for (k = 0; k < 6; k++) n_exit_rate[k] = 0.0;    // stop the flow, but KEEP the totals
     }
 
 
@@ -373,7 +381,7 @@ DEFINE_EXECUTE_AT_END(average_temp)
     {
         for (k = 0; k < 6; k++)
         {   m_x[k] = (n_exit_rate[k] * MW[k]) / (1000 * Area_valve);
-            m_x_total += n_exit_rate[k] * MW[k]; // gram
+            m_x_total += n_exit_rate[k] * MW[k] * dt; // gram
         }
     }
 
@@ -427,8 +435,8 @@ DEFINE_EXECUTE_AT_END(average_temp)
         Message("9 gram limit reached");
     }
 
-    Message("t = %g s  T_avg = %g K  P_avg = %g Pa  q = %g W/m3\n",
-            CURRENT_TIME, T_avg, P_avg, q_stored);
+   Message("t = %g s  T = %g K  P = %g Pa  n_in = %g mol  m_gen = %g g  q = %g W/m3\n",
+           CURRENT_TIME, T_avg, P_avg, n_total_inside, m_tot_gen_accum, q_stored);
 #endif
 
 }
@@ -443,7 +451,7 @@ DEFINE_PROFILE(mass_flux_H2, t, i)
     face_t f;
     begin_f_loop(f, t)
     {
-        if (G_total > 0) F_PROFILE(f, t, i) = m_x[0];
+        if (n_exit_t > 0) F_PROFILE(f, t, i) = m_x[0];
         else             F_PROFILE(f, t, i) = 0.0;
     }
     end_f_loop(f, t)
@@ -454,7 +462,7 @@ DEFINE_PROFILE(mass_flux_C2H4, t, i)
     face_t f;
     begin_f_loop(f, t)
     {
-        if (G_total > 0) F_PROFILE(f, t, i) = m_x[1];
+        if (n_exit_t > 0) F_PROFILE(f, t, i) = m_x[1];
         else             F_PROFILE(f, t, i) = 0.0;
     }
     end_f_loop(f, t)
@@ -465,7 +473,7 @@ DEFINE_PROFILE(mass_flux_CH4, t, i)
     face_t f;
     begin_f_loop(f, t)
     {
-        if (G_total > 0) F_PROFILE(f, t, i) = m_x[2];
+        if (n_exit_t > 0) F_PROFILE(f, t, i) = m_x[2];
         else             F_PROFILE(f, t, i) = 0.0;
     }
     end_f_loop(f, t)
@@ -476,7 +484,7 @@ DEFINE_PROFILE(mass_flux_CO, t, i)
     face_t f;
     begin_f_loop(f, t)
     {
-        if (G_total > 0) F_PROFILE(f, t, i) = m_x[3];
+        if (n_exit_t > 0) F_PROFILE(f, t, i) = m_x[3];
         else             F_PROFILE(f, t, i) = 0.0;
     }
     end_f_loop(f, t)
@@ -487,7 +495,7 @@ DEFINE_PROFILE(mass_flux_CO2, t, i)
     face_t f;
     begin_f_loop(f, t)
     {
-        if (G_total > 0) F_PROFILE(f, t, i) = m_x[4];
+        if (n_exit_t > 0) F_PROFILE(f, t, i) = m_x[4];
         else             F_PROFILE(f, t, i) = 0.0;
     }
     end_f_loop(f, t)
@@ -498,7 +506,7 @@ DEFINE_PROFILE(mass_flux_O2, t, i)
     face_t f;
     begin_f_loop(f, t)
     {
-        if (G_total > 0) F_PROFILE(f, t, i) = m_x[5];
+        if (n_exit_t > 0) F_PROFILE(f, t, i) = m_x[5];
         else             F_PROFILE(f, t, i) = 0.0;
     }
     end_f_loop(f, t)
@@ -509,7 +517,7 @@ DEFINE_PROFILE(inlet_temperature, t, i)
     face_t f;
     begin_f_loop(f, t)
     {
-        if (G_total > 0) F_PROFILE(f, t, i) = T2;
+        if (n_exit_t > 0) F_PROFILE(f, t, i) = T2;
         else             F_PROFILE(f, t, i) = 0.0;   // 0 K when closed: original, fix in step 2
     }
     end_f_loop(f, t)
@@ -520,7 +528,7 @@ DEFINE_PROFILE(inlet_velocity, t, i)
     face_t f;
     begin_f_loop(f, t)
     {
-        if (G_total > 0) F_PROFILE(f, t, i) = u3;
+        if (n_exit_t > 0) F_PROFILE(f, t, i) = u3;
         else             F_PROFILE(f, t, i) = 0.0;
     }
     end_f_loop(f, t)
