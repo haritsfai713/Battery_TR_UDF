@@ -69,6 +69,21 @@ real m_x_total = 0;
 real valve_open = 0;
 real P_avg, V_void, rho_mix, gama, Ma, T2, u2, u3, P2;
 
+/* ---------- Dummy temperature history for testing ---------- */
+#define T_INITIAL     400.0    // K    <- set to your value
+#define T_HEAT_RATE   1.0      // K/s  <- set to your value (rate during the first 2 s)
+#define T_RATE_LATE   1.0      // K/s  rate after t = 2 s (from your formula)
+#define T_SWITCH      2.0      // s
+
+/* Prescribed battery temperature T_1(t), same as your Python formula */
+static real dummy_T(real time)
+{
+    if (time < T_SWITCH)
+        return T_INITIAL + T_HEAT_RATE * time;                                   // first 2 s
+    else
+        return T_INITIAL + T_HEAT_RATE * T_SWITCH + (time - T_SWITCH) * T_RATE_LATE;
+}
+
 
 
 /* ======================================================================
@@ -237,7 +252,7 @@ DEFINE_EXECUTE_AT_END(average_temp)
         c_x[10] = c_x[10] - R[10] * dt;
         if (c_x[10] < .00001) c_x[10] = 0.0;
         
-        R[8] = 7.88e36 * c_x[8] * exp(-2.81e5 / (R_gas * T));
+        R[8] = 7.88e25 * c_x[8] * exp(-2.81e5 / (R_gas * T));
         if (R[8] * dt > c_x[8]) R[8] = c_x[8] / dt;      // NEW: limit to what is left
         c_x[8] = c_x[8] - R[8] * dt;
         if (c_x[8] < .00001) c_x[8] = 0.0;
@@ -558,3 +573,16 @@ DEFINE_PROFILE(inlet_velocity, t, i)
       }
       end_f_loop(f, t)
   }
+
+  /* Fixed-value profile for the battery CELL ZONE temperature */
+DEFINE_PROFILE(battery_fixed_temperature, t, i)
+{
+    cell_t c;
+    real T1 = dummy_T(CURRENT_TIME);
+
+    begin_c_loop(c, t)
+    {
+        F_PROFILE(c, t, i) = T1;     // for a cell zone, F_PROFILE takes a cell index
+    }
+    end_c_loop(c, t)
+}
