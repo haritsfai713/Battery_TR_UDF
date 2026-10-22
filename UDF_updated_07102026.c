@@ -46,6 +46,7 @@
 #define TINY_VAL     1e-30
 #define m_total 9.0  // 9 gram total mass decomposed
 
+int printed = 0;
 real T_avg = 300.0;     // average battery temperature (K)
 real q_stored = 0.0;    // heat source used by DEFINE_SOURCE (W/m3)
 
@@ -143,7 +144,7 @@ DEFINE_INIT(init_concentrations, domain)
    2) HEAT SOURCE: Fluent calls this for every battery cell in every
       iteration. It ONLY returns the stored value.
    ====================================================================== */
-DEFINE_SOURCE(my_battery_heat_source, c, t, ds, eqn)
+DEFINE_SOURCE(battery_heat_source, c, t, ds, eqn)
 {
     ds[eqn] = 0.0;
     return q_stored;    // W/m3
@@ -387,15 +388,16 @@ DEFINE_EXECUTE_AT_END(average_temp)
 
     
     // chemical heat
-    if (T > T_chem && T <= T_tr && C_chem >= 0 && C_chem <= 1)
-        dC_chem_dt = (Cp / H_chem) * A_chem * rho * V_bat * pow(T / T_ref, b_chem);  //
-    else if (T > T_tr && C_chem >= 0 && C_chem <= 1)
+    if (T > T_chem && T <= T_tr && C_chem > 0 && C_chem <= 1)
+        dC_chem_dt = (Cp / H_chem) * A_chem * rho * V_bat * pow(T / T_ref, b_chem);
+    else if (T > T_tr && C_chem > 0 && C_chem <= 1)
         dC_chem_dt = C_chem_max;
     else
         dC_chem_dt = 0.0;
-    C_chem = C_chem - dC_chem_dt * dt;
     if (C_chem < 0) C_chem = 0;
-    q_chem = (1.0 / V_bat) * H_chem * dC_chem_dt;
+    if (dC_chem_dt * dt > C_chem) dC_chem_dt = C_chem / dt;    // NEW: can't release more than is left
+    C_chem = C_chem - dC_chem_dt * dt;
+        q_chem = (1.0 / V_bat) * H_chem * dC_chem_dt;
 
     // electrical (short-circuit heat)
     if (T > T_tr && C_elec >= 0 && C_elec <= 1)
@@ -408,7 +410,18 @@ DEFINE_EXECUTE_AT_END(average_temp)
     // heat used by DEFINE_SOURCE during the NEXT time step
     q_stored = q_chem + q_elec;
 
-    /* ---------- c) and d) set cells to T_avg, save results in UDM ---------- */
+    /* ---------- c and d set cells to T_avg, save results in UDM ---------- */
+    /* TEST: what is in UDM 13 of one battery cell before we write it? */
+    begin_c_loop_int(c, t)
+    {
+        if (!printed)
+        {
+            Message("check: UDM13 before write = %g   P_avg now = %g\n", C_UDMI(c, t, 13), P_avg);
+            printed = 1;
+        }
+    }
+    end_c_loop_int(c, t)
+
     begin_c_loop(c, t)
     {
         C_T(c, t) = T_avg;                 // lumped battery temperature
@@ -533,3 +546,14 @@ DEFINE_PROFILE(inlet_velocity, t, i)
     }
     end_f_loop(f, t)
 }
+
+  DEFINE_PROFILE(heater_flux, t, i)
+  {
+      face_t f;
+      begin_f_loop(f, t)
+      {
+          if (T_avg < 533.15) F_PROFILE(f, t, i) = 1e5;   // W/m2
+          else                F_PROFILE(f, t, i) = 0.0;
+      }
+      end_f_loop(f, t)
+  }
