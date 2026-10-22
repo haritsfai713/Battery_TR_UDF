@@ -358,7 +358,7 @@ DEFINE_EXECUTE_AT_END(average_temp)
 
        // venting (opens above 1.5 MPa)
        // n_exit_accu[k] = (n_gen[k] / n_total_gen) * n_exit_total_accu;
-    if (valve_open == 1 && T2 > 0 && u2 > 0 && n_total_gen > 0)
+    if (valve_open == 1 && T2 > 0 && u2 > 0 && n_total_inside > 0)
     {
         n_exit_t = (u3 * Area_valve * P2) / (R_gas * T2);
         if (n_exit_t * dt > n_total_inside) n_exit_t = n_total_inside / dt;  // can't vent more than inside
@@ -397,13 +397,14 @@ DEFINE_EXECUTE_AT_END(average_temp)
     if (C_chem < 0) C_chem = 0;
     if (dC_chem_dt * dt > C_chem) dC_chem_dt = C_chem / dt;    // NEW: can't release more than is left
     C_chem = C_chem - dC_chem_dt * dt;
-        q_chem = (1.0 / V_bat) * H_chem * dC_chem_dt;
+    q_chem = (1.0 / V_bat) * H_chem * dC_chem_dt;
 
     // electrical (short-circuit heat)
     if (T > T_tr && C_elec >= 0 && C_elec <= 1)
         dC_elec_dt = C_elec_max;
     else
         dC_elec_dt = 0.0;
+    if (dC_elec_dt * dt > C_elec) dC_elec_dt = C_elec / dt;    // NEW
     C_elec = C_elec - dC_elec_dt * dt;
     q_elec = (1.0 / V_bat) * H_sc * dC_elec_dt;
 
