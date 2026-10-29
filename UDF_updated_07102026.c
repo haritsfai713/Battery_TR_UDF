@@ -401,6 +401,17 @@ DEFINE_EXECUTE_AT_END(average_temp)
         }
     }
 
+        /* gas actually left inside AFTER venting */
+    n_total_inside = n_total_gen_accu - n_exit_total_accu;
+    if (n_total_inside < 1e-10) n_total_inside = 0.0;
+    for (k = 0; k < 6; k++)
+    {
+        n_inside[k] = n_gen_accu[k] - n_exit_accu[k];
+        if (n_inside[k] < 1e-10) n_inside[k] = 0.0;
+    }
+    if (n_total_inside > 0.0) P_avg = n_total_inside * R_gas * T / V_void + P_atm;
+    else                      P_avg = P_atm;
+
     
     // chemical heat
     if (T > T_chem && T <= T_tr && C_chem > 0 && C_chem <= 1)
@@ -456,6 +467,7 @@ DEFINE_EXECUTE_AT_END(average_temp)
         C_UDMI(c, t, 26) = rho_mix;
         C_UDMI(c, t, 27) = Ma;
         C_UDMI(c, t, 28) = m_tot_gen_accum;
+        for (k = 0; k < 11; k++) C_UDMI(c, t, 29 + k) = R[k];
     }
     end_c_loop(c, t)
 
