@@ -68,6 +68,8 @@ real m_tot_gen_accum;                      // accumulated mass generated
 real m_x_total = 0;
 real valve_open = 0;
 real P_avg, V_void, rho_mix, gama, Ma, T2, u2, u3, P2;
+real P_after;
+real n_left;
 
 /* ---------- Dummy temperature history for testing ---------- */
 #define T_INITIAL     400.0    // K    <- set to your value
@@ -189,6 +191,7 @@ DEFINE_EXECUTE_AT_END(average_temp)
     real n_gen[6], n_total_gen;     // moles generated in this time step
     real mass, gama_sum, P3;
     real dC_chem_dt, dC_elec_dt, q_chem, q_elec;
+
 
     // ---------- a) average temperature ----------
     begin_c_loop_int(c, t)
@@ -401,8 +404,14 @@ DEFINE_EXECUTE_AT_END(average_temp)
         }
     }
 
+        /* pressure AFTER venting = what is left inside at the end of this step */
+    n_left = n_total_gen_accu - n_exit_total_accu;
+    if (n_left < 1e-10) n_left = 0.0;
+    if (n_left > 0.0) P_after = n_left * R_gas * T / V_void + P_atm;
+    else              P_after = P_atm;
+
         /* gas actually left inside AFTER venting */
-    n_total_inside = n_total_gen_accu - n_exit_total_accu;
+/*    n_total_inside = n_total_gen_accu - n_exit_total_accu;
     if (n_total_inside < 1e-10) n_total_inside = 0.0;
     for (k = 0; k < 6; k++)
     {
@@ -411,7 +420,7 @@ DEFINE_EXECUTE_AT_END(average_temp)
     }
     if (n_total_inside > 0.0) P_avg = n_total_inside * R_gas * T / V_void + P_atm;
     else                      P_avg = P_atm;
-
+*/
     
     // chemical heat
     if (T > T_chem && T <= T_tr && C_chem > 0 && C_chem <= 1)
@@ -468,6 +477,9 @@ DEFINE_EXECUTE_AT_END(average_temp)
         C_UDMI(c, t, 27) = Ma;
         C_UDMI(c, t, 28) = m_tot_gen_accum;
         for (k = 0; k < 11; k++) C_UDMI(c, t, 29 + k) = R[k];
+        C_UDMI(c, t, 40) = P_after;
+        C_UDMI(c, t, 41) = n_left;
+
     }
     end_c_loop(c, t)
 
@@ -476,8 +488,8 @@ DEFINE_EXECUTE_AT_END(average_temp)
         Message("9 gram limit reached");
     }
 
-   Message("t = %g s  T = %g K  P = %g Pa  n_in = %g mol  m_gen = %g g  q = %g W/m3\n",
-           CURRENT_TIME, T_avg, P_avg, n_total_inside, m_tot_gen_accum, q_stored);
+   Message("t = %g s  T = %g K  P_avg = %g Pa  P_after = %g Pa  n_in = %g mol  m_gen = %g g  q = %g W/m3\n",
+           CURRENT_TIME, T_avg, P_avg, P_after, n_total_inside, m_tot_gen_accum, q_stored);
 #endif
 
 }
