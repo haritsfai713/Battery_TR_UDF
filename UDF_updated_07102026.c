@@ -313,26 +313,8 @@ DEFINE_EXECUTE_AT_END(average_temp)
             V_void = V_void_init;
     }
     
-
-    // moles inside the battery = generated - vented
-    n_total_inside = n_total_gen_accu - n_exit_total_accu;
-    if (n_total_inside < 1e-10) n_total_inside = 0.0;
-    for (k = 0; k < 6; k++)
-    {
-        n_inside[k] = n_gen_accu[k] - n_exit_accu[k];
-        if (n_inside[k] < 1e-10) n_inside[k] = 0.0;
-    }
-
-    if (n_total_inside > 0 && V_void > 0)
-    {P_avg = (n_total_inside * R_gas * T) / V_void + P_atm;}
-    else {
-        P_avg = P_atm;
-    }
-
-    if (P_avg >= 1.5e6)
-    {valve_open = 1;}
-
-    // Mach number at the valve
+    // Isentropic flow calculation started
+     // Mach number at the valve
     if (valve_open == 1 && P_avg > P_atm)
     {
         if ((P_atm / P_avg) > pow(2 / (gama + 1), gama / (gama - 1)))
@@ -410,6 +392,25 @@ DEFINE_EXECUTE_AT_END(average_temp)
     if (n_left > 0.0) P_after = n_left * R_gas * T / V_void + P_atm;
     else              P_after = P_atm;
 
+    // internal pressure calculation
+    // moles inside the battery = generated - vented
+    n_total_inside = n_total_gen_accu - n_exit_total_accu;
+    if (n_total_inside < 1e-10) n_total_inside = 0.0;
+    for (k = 0; k < 6; k++)
+    {
+        n_inside[k] = n_gen_accu[k] - n_exit_accu[k];
+        if (n_inside[k] < 1e-10) n_inside[k] = 0.0;
+    }
+
+    if (n_total_inside > 0 && V_void > 0)
+    {P_avg = (n_total_inside * R_gas * T) / V_void + P_atm;}
+    else {
+        P_avg = P_atm;
+    }
+
+    if (P_avg >= 1.5e6)
+    {valve_open = 1;}
+
         /* gas actually left inside AFTER venting */
 /*    n_total_inside = n_total_gen_accu - n_exit_total_accu;
     if (n_total_inside < 1e-10) n_total_inside = 0.0;
@@ -479,6 +480,8 @@ DEFINE_EXECUTE_AT_END(average_temp)
         for (k = 0; k < 11; k++) C_UDMI(c, t, 29 + k) = R[k];
         C_UDMI(c, t, 40) = P_after;
         C_UDMI(c, t, 41) = n_left;
+        C_UDMI(c, t, 42) = u3;
+
 
     }
     end_c_loop(c, t)
